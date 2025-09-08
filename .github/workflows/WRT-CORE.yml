@@ -40,7 +40,15 @@ on:
       WRT_TEST:
         required: false
         type: string
-
+      WRT_IGNORE_ERRORS:
+        required: false
+        type: string
+      WRT_EXTRA_CONFIG:
+        required: false
+        type: string
+      WRT_FORCE_DELETE_PACKAGES:
+        required: false
+        type: string
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
   WRT_CONFIG: ${{inputs.WRT_CONFIG}}
@@ -55,6 +63,9 @@ env:
   WRT_SOURCE: ${{inputs.WRT_SOURCE}}
   WRT_PACKAGE: ${{inputs.WRT_PACKAGE}}
   WRT_TEST: ${{inputs.WRT_TEST}}
+  WRT_IGNORE_ERRORS: ${{inputs.WRT_IGNORE_ERRORS}}
+  WRT_EXTRA_CONFIG: ${{inputs.WRT_EXTRA_CONFIG}}
+  WRT_FORCE_DELETE_PACKAGES: ${{inputs.WRT_FORCE_DELETE_PACKAGES}}
 
 jobs:
   core:
@@ -151,6 +162,11 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+          if [[ -n "${WRT_FORCE_DELETE_PACKAGES}" ]]; then
+            echo "Uninstall: ${WRT_FORCE_DELETE_PACKAGES/\\n/ }"
+            echo -e "${WRT_FORCE_DELETE_PACKAGES}" | xargs -n 1 ./scripts/feeds uninstall
+          fi
+
       - name: Custom Packages
         run: |
           cd ./wrt/package/
@@ -166,6 +182,10 @@ jobs:
             cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt >> .config
           else
             cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt $GITHUB_WORKSPACE/Config/GENERAL.txt >> .config
+          fi
+
+          if [[ -n "${WRT_EXTRA_CONFIG}" ]]; then
+            echo -e "${WRT_EXTRA_CONFIG}" >> .config
           fi
 
           $GITHUB_WORKSPACE/Scripts/Settings.sh
@@ -184,7 +204,11 @@ jobs:
         run: |
           cd ./wrt/
 
-          make -j$(nproc) || make -j$(nproc) V=s
+          if [[ "${WRT_IGNORE_ERRORS}" == 'true' ]] then
+            IGNORE_ERRORS=1 make -k -j$(nproc) V=s || exit 0
+          else
+            make -j$(nproc) || make -j$(nproc) V=s
+          fi
 
       - name: Machine Information
         run: |
@@ -208,11 +232,14 @@ jobs:
             echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)" >> $GITHUB_ENV
             echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ')" >> $GITHUB_ENV
 
+            # find ./bin/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\|apk\)$"
+            find ./bin/ ! -iregex ".*\(\.xz\|\.zst\|\.gz\|\.bin\)$" | tar -czf "./upload/$WRT_INFO-$WRT_TARGET-files.tar.gz" -T -
+            find ./bin/ -type f > "./upload/$WRT_INFO-$WRT_TARGET-filelist.txt"
             find ./bin/targets/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
 
             for FILE in $(find ./bin/targets/ -type f -iname "*$WRT_TARGET*") ; do
               EXT=$(basename $FILE | cut -d '.' -f 2-)
-              NAME=$(basename $FILE | cut -d '.' -f 1 | grep -io "\($WRT_TARGET\).*")
+              NAME=$(basename $FILE | cut -d '.' -f 1 | cut -d- -f2-)
               NEW_FILE="$WRT_INFO"-"$WRT_BRANCH"-"$NAME"-"$WRT_DATE"."$EXT"
               mv -f $FILE ./upload/$NEW_FILE
             done
@@ -222,17 +249,23 @@ jobs:
             make clean -j$(nproc)
           fi
 
+      - name: Set compile message
+        id: message
+        run: |
+          if [[ "${WRT_IGNORE_ERRORS}" == 'true' ]]; then
+            echo "msg=⚠️ 忽略错误编译 ⚠️" >> $GITHUB_OUTPUT
+          else
+            echo "msg=✅ 正常编译 ✅" >> $GITHUB_OUTPUT
+          fi
+
       - name: Release Firmware
         uses: softprops/action-gh-release@master
         with:
           tag_name: ${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_BRANCH}}-${{env.WRT_DATE}}
           files: ./wrt/upload/*.*
           body: |
-            这是个平台固件包，内含多个设备！
-            请注意选择你需要的设备固件！
-            不要问，刷就完事了！
 
-            全系带开源硬件加速，别问了！
+            ${{ steps.message.outputs.msg }}
 
             源码：${{env.WRT_REPO}}
             分支：${{env.WRT_BRANCH}}

@@ -16,10 +16,23 @@ on:
         required: false
         type: string
       TEST:
-        description: '仅输出配置文件，不编译固件。'
-        default: 'false'
+        description: "仅输出配置文件，不编译固件。"
+        default: false
         required: false
         type: boolean
+      IGNORE_ERRORS:
+        description: "编译一切，忽略错误。"
+        default: false
+        required: false
+        type: boolean
+      EXTRA_CONFIG:
+        description: '额外配置选项，多个请用\n符号隔开。'
+        required: false
+        type: string
+      FORCE_DELETE_PACKAGES:
+        description: "强制删除已知有问题的插件，多个请用空格或者\n符号隔开。"
+        required: false
+        type: string
 
 #CI权限
 permissions: write-all
@@ -32,7 +45,7 @@ jobs:
       fail-fast: false
       #max-parallel: 3
       matrix:
-        CONFIG: [IPQ60XX-WIFI-YES, IPQ60XX-WIFI-NO, IPQ807X-WIFI-YES, IPQ807X-WIFI-NO]
+        CONFIG: [IPQ60XX-WIFI-YES, IPQ60XX-WIFI-NO]
         SOURCE: [VIKINGYFY/immortalwrt]
         BRANCH: [main]
 
@@ -63,3 +76,9 @@ jobs:
       WRT_PACKAGE: ${{inputs.PACKAGE}}
       #仅输出配置文件
       WRT_TEST: ${{inputs.TEST}}
+      #编译一切，忽略错误
+      WRT_IGNORE_ERRORS: ${{inputs.IGNORE_ERRORS}}
+      #额外配置选项
+      WRT_EXTRA_CONFIG: ${{inputs.EXTRA_CONFIG}}
+      #强制删除已知有问题的插件
+      WRT_FORCE_DELETE_PACKAGES: ${{inputs.FORCE_DELETE_PACKAGES}}
