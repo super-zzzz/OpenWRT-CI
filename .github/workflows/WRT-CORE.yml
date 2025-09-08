@@ -40,6 +40,12 @@ on:
       WRT_TEST:
         required: false
         type: string
+      WRT_IGNORE_ERRORS:
+        required: false
+        type: string
+      WRT_EXTRA_CONFIG:
+        required: false
+        type: string
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -55,6 +61,8 @@ env:
   WRT_SOURCE: ${{inputs.WRT_SOURCE}}
   WRT_PACKAGE: ${{inputs.WRT_PACKAGE}}
   WRT_TEST: ${{inputs.WRT_TEST}}
+  WRT_IGNORE_ERRORS: ${{inputs.WRT_IGNORE_ERRORS}}
+  WRT_EXTRA_CONFIG: ${{inputs.WRT_EXTRA_CONFIG}}
 
 jobs:
   core:
@@ -168,6 +176,10 @@ jobs:
             cat $GITHUB_WORKSPACE/Config/$WRT_CONFIG.txt $GITHUB_WORKSPACE/Config/GENERAL.txt >> .config
           fi
 
+          if [[ -n "${WRT_EXTRA_CONFIG}" ]]; then
+            echo -e "${WRT_EXTRA_CONFIG}" >> .config
+          fi
+
           $GITHUB_WORKSPACE/Scripts/Settings.sh
 
           make defconfig -j$(nproc) && make clean -j$(nproc)
@@ -183,8 +195,11 @@ jobs:
         if: env.WRT_TEST != 'true'
         run: |
           cd ./wrt/
-
-          make -j$(nproc) || make -j$(nproc) V=s
+          if [[ "${WRT_IGNORE_ERRORS}" == 'true' ]] then
+            IGNORE_ERRORS=1 make -k -j$(nproc) || IGNORE_ERRORS=1 make -k -j$(nproc) V=s
+          else
+            make -j$(nproc) || make -j$(nproc) V=s
+          fi
 
       - name: Machine Information
         run: |
@@ -208,6 +223,8 @@ jobs:
             echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)" >> $GITHUB_ENV
             echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ')" >> $GITHUB_ENV
 
+            find ./bin/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" | tar -czf "./bin/targets/$WRT_TARGET-files.tar.gz" -T -
+            find ./bin/ -type f > "./upload/$WRT_TARGET-filelist.txt"
             find ./bin/targets/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
 
             for FILE in $(find ./bin/targets/ -type f -iname "*$WRT_TARGET*") ; do
