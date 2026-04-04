@@ -81,7 +81,7 @@ jobs:
       #源码分支
       WRT_BRANCH: ${{inputs.BRANCH_OVERRIDE}}
       #源码名称
-      WRT_SOURCE: ${{matrix.SOURCE}}
+      WRT_SOURCE: ${{inputs.SOURCE_OVERRIDE}}
       #插件调整
       WRT_PACKAGE: ${{inputs.PACKAGE}}
       #仅输出配置文件
